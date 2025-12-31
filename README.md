@@ -1,115 +1,217 @@
-# Autopilot
+# Goal Mode
 
-Autonomous goal-driven loops for Claude Code. Define a goal, let Claude Code run until it's done or stuck.
+Autonomous goal-driven loops for Claude Code. Define a goal with verification criteria, let Claude Code work until it's done or stuck.
+
+## Quick Start
+
+```bash
+# Install
+git clone https://github.com/jmullet/goal-mode.git
+cd goal-mode
+./install.sh
+
+# Restart Claude Code, then:
+/goal
+```
+
+That's it. The `/goal` command walks you through creating a well-defined goal.
 
 ## How It Works
 
-1. You create a `GOAL.md` file with clear success criteria
-2. You start Claude Code and tell it to work on the goal
-3. A stop hook checks `GOAL.md` after each response
-4. If Status isn't `DONE` or `STUCK`, Claude Code continues automatically
-5. Claude Code loops until the goal is achieved or it gets stuck
+```
+┌─────────────────────────────────────────────────────────────┐
+│                      GOAL.md exists                         │
+│                           ↓                                 │
+│  PENDING → IMPLEMENTING → VERIFYING → DONE                  │
+│                 ↓              ↓                            │
+│               STUCK          STUCK                          │
+│                                                             │
+│  Stop hook re-injects prompts until DONE/STUCK/max reached  │
+└─────────────────────────────────────────────────────────────┘
+```
+
+1. You create a GOAL.md with clear objectives and verification commands
+2. The stop hook detects it and prevents the session from ending
+3. Agent works through the state machine with status-specific guidance
+4. Agent can only mark DONE after pasting verification evidence
+5. Agent marks STUCK when it hits an unfixable issue
+
+## Requirements
+
+- Claude Code CLI
+- `jq` (for install script) - `brew install jq`
+- macOS or Linux
 
 ## Installation
 
 ```bash
-git clone https://github.com/yourusername/autopilot
-cd autopilot
+git clone https://github.com/jmullet/goal-mode.git
+cd goal-mode
 ./install.sh
 ```
 
-This adds a stop hook to your `~/.claude/settings.json`.
+This installs:
+- Stop hook → `~/.claude/settings.json`
+- Slash command → `~/.claude/commands/goal.md`
+
+**Important:** Restart Claude Code after installing for changes to take effect.
 
 ## Usage
 
-### 1. Create a Goal
-
-Copy the template to your project:
-
-```bash
-cp /path/to/autopilot/templates/GOAL.md ./GOAL.md
-```
-
-Fill in:
-- **Objective**: What you're trying to achieve
-- **Success Criteria**: Checkboxes that define "done"
-- **Test Steps**: How to verify each criterion
-- **Reset Steps**: (Optional) How to clean up for re-testing
-
-### 2. Start Claude Code
-
-```bash
-claude
-```
-
-Then tell Claude Code to work on the goal:
+### Recommended: Use the slash command
 
 ```
-Read GOAL.md and implement the goal. Update the Status and Notes as you work.
+/goal
 ```
 
-### 3. Walk Away
+This starts a guided conversation that:
+- Explains what goal mode is
+- Asks detailed questions about your goal
+- Ensures verification is well-defined
+- Creates the GOAL.md only when ready
 
-Claude Code will:
-- Implement the solution
-- Test against success criteria
-- Update Notes with observations
-- Loop until Status is `DONE` or `STUCK`
+### Manual: Create GOAL.md yourself
 
-### 4. Check Back
+Copy `templates/GOAL.md` to your project and fill it in.
 
-When you return, check `GOAL.md`:
-- **Status: DONE** - Goal achieved, success criteria met
-- **Status: STUCK** - Claude Code hit a wall, needs human help
-- **Notes section** - See what was tried and what happened
+## Example
 
-## GOAL.md Format
+Here's a simple goal that increments a counter:
 
 ```markdown
-# GOAL: Short description
+# GOAL: Increment counter to 5
 
-## Status: PENDING | IMPLEMENTING | TESTING | DONE | STUCK
-## Iteration: 0
+## Status: PENDING
 ## Max iterations: 10
 
 ---
 
 ## Objective
-What you're trying to achieve and why.
 
-## Success Criteria
-- [ ] Testable criterion 1
-- [ ] Testable criterion 2
+Increment the value in `counter.txt` from 0 to 5, one step at a time.
 
-## Test Steps
-1. How to verify criterion 1
-2. How to verify criterion 2
+How to do it:
+1. Read the current value from counter.txt
+2. If value is less than 5, increment by exactly 1
+3. Write the new value back to counter.txt
+4. Repeat until value reaches 5
 
-## Reset Steps
-1. How to clean up for re-testing
+Important: Increment by 1 each iteration. Do NOT jump from 0 to 5.
+
+## Verification
+
+- Command: `cat counter.txt`
+- Expected: `5`
+
+## Evidence
+
+[Agent fills this when verifying]
 
 ## Notes
-[Claude Code writes here as it works]
+
+[Agent logs progress here]
 ```
+
+The agent will loop through IMPLEMENTING → VERIFYING until the counter reaches 5, then paste the evidence and mark DONE.
+
+## GOAL.md Anatomy
+
+```markdown
+# GOAL: Short description
+
+## Status: PENDING
+## Max iterations: 10
+
+---
+
+## Objective
+[WHAT to accomplish and HOW - specific enough for independent work]
+
+## Verification
+[Commands to prove success with expected outputs]
+- Command: `cat output.txt`
+- Expected: `success`
+
+## Evidence
+[Agent fills this during VERIFYING - proves the goal is complete]
+
+## Notes
+[Agent logs progress, errors, observations]
+```
+
+### Sections Explained
+
+| Section | Purpose | Who Edits |
+|---------|---------|-----------|
+| Status | State machine position | Agent |
+| Max iterations | Safety limit | User (at creation) |
+| Objective | What to do and how | User (at creation) |
+| Verification | How to prove success | User (at creation) |
+| Evidence | Proof of completion | Agent (only when verified) |
+| Notes | Progress log | Agent |
+
+### State Machine
+
+| Status | Meaning | Next States |
+|--------|---------|-------------|
+| PENDING | Goal defined, not started | IMPLEMENTING |
+| IMPLEMENTING | Actively working | VERIFYING, STUCK |
+| VERIFYING | Checking if it works | DONE, IMPLEMENTING, STUCK |
+| DONE | Verified complete | (terminal) |
+| STUCK | Needs human help | (terminal) |
+
+## The Evidence Rule
+
+The agent can only set Status to DONE if the Evidence section has real content.
+
+- Evidence must contain actual command outputs
+- Agent is instructed to only add evidence with "extreme confidence"
+- This prevents optimistic false completion
 
 ## Safety Features
 
-- **Iteration limit**: Stops after N iterations (default 10)
-- **stop_hook_active check**: Prevents infinite loops
-- **STUCK status**: Claude Code can bail out if it can't proceed
-- **Per-project tracking**: Each project's iteration count is tracked separately
+- **Max iterations**: Hard limit prevents infinite loops
+- **Evidence requirement**: Can't claim DONE without proof
+- **STUCK escape hatch**: Agent can bail when truly blocked
+- **Anatomy validation**: Hook errors if GOAL.md is malformed
+
+## What Each Piece Does
+
+### Stop Hook (`hooks/goal-stop.sh`)
+
+Runs after every agent response. It:
+1. Checks if GOAL.md exists (no file = no goal mode)
+2. Validates anatomy (all required sections present)
+3. Reads current Status
+4. Either allows stop (DONE/STUCK) or blocks with status-specific prompt
+5. Tracks iterations to enforce max limit
+
+### Slash Command (`commands/goal.md`)
+
+Prompt that guides goal creation:
+1. Explains the system and why quality matters
+2. Lists questions to ask the user
+3. Instructs agent not to create file until fully ready
+4. Ensures verification is concrete and testable
+
+### Template (`templates/GOAL.md`)
+
+Skeleton file with all sections and inline guidance.
 
 ## Uninstall
 
-Remove the Stop hook from `~/.claude/settings.json`:
+```bash
+# Remove hook from settings (edit the file manually)
+nano ~/.claude/settings.json
+# Delete the "Stop" section under "hooks"
 
-```json
-{
-  "hooks": {
-    "Stop": []  // Remove the autopilot entry
-  }
-}
+# Remove slash command
+rm ~/.claude/commands/goal.md
 ```
+
+## Credits
+
+Inspired by [Ralph Wiggum](https://github.com/whatif-dev/thoughts-ralph_wiggum) - the original Claude Code autonomous loop implementation.
 
 ## License
 
