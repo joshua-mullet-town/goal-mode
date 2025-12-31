@@ -6,7 +6,7 @@ Autonomous goal-driven loops for Claude Code. Define a goal with verification cr
 
 ```bash
 # Install
-git clone https://github.com/jmullet/goal-mode.git
+git clone https://github.com/joshua-mullet-town/goal-mode.git
 cd goal-mode
 ./install.sh
 
@@ -45,7 +45,7 @@ That's it. The `/goal` command walks you through creating a well-defined goal.
 ## Installation
 
 ```bash
-git clone https://github.com/jmullet/goal-mode.git
+git clone https://github.com/joshua-mullet-town/goal-mode.git
 cd goal-mode
 ./install.sh
 ```
