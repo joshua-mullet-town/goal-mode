@@ -33,28 +33,29 @@ if ! command -v jq &> /dev/null; then
   exit 1
 fi
 
-# Add the hook to settings.json
-HOOK_CONFIG=$(jq -n --arg cmd "$HOOK_SCRIPT" '{
-  "Stop": [{
-    "matcher": ".*",
-    "hooks": [{
-      "type": "command",
-      "command": $cmd
-    }]
+# Add the hook to settings.json (preserving other hooks)
+GOAL_HOOK=$(jq -n --arg cmd "$HOOK_SCRIPT" '{
+  "matcher": "*",
+  "hooks": [{
+    "type": "command",
+    "command": $cmd
   }]
 }')
 
-# Read existing settings and merge
+# Read existing settings
 EXISTING=$(cat "$CLAUDE_SETTINGS")
-EXISTING_HOOKS=$(echo "$EXISTING" | jq '.hooks // {}')
 
-# Merge hooks (goal mode Stop hook will be added/replaced)
-NEW_HOOKS=$(echo "$EXISTING_HOOKS" | jq --argjson new "$HOOK_CONFIG" '. * $new')
-NEW_SETTINGS=$(echo "$EXISTING" | jq --argjson hooks "$NEW_HOOKS" '.hooks = $hooks')
-
-# Write back
-echo "$NEW_SETTINGS" > "$CLAUDE_SETTINGS"
-echo "✓ Added goal mode stop hook to $CLAUDE_SETTINGS"
+# Check if goal-stop.sh is already in Stop hooks
+if echo "$EXISTING" | jq -e '.hooks.Stop[]?.hooks[]?.command | select(contains("goal-stop.sh"))' > /dev/null 2>&1; then
+  echo "✓ Goal mode hook already installed"
+else
+  # Add to existing Stop hooks array (or create it)
+  NEW_SETTINGS=$(echo "$EXISTING" | jq --argjson hook "$GOAL_HOOK" '
+    .hooks.Stop = ((.hooks.Stop // []) + [$hook])
+  ')
+  echo "$NEW_SETTINGS" > "$CLAUDE_SETTINGS"
+  echo "✓ Added goal mode stop hook to $CLAUDE_SETTINGS"
+fi
 
 # Install slash command
 mkdir -p "$CLAUDE_COMMANDS"
